@@ -1,0 +1,1 @@
+print("Eat less!") #작작 쳐먹어
