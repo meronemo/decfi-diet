@@ -29,10 +29,9 @@ class MealRecommendation:
         # 한 끼 식사의 영양소 목표값 계산 (일일 권장량의 40%)
         meal_calories = daily_calories * 0.4
         
-        # 한국인 영양소 섭취기준 기반 매크로 비율
-        carb_ratio = 0.60    # 탄수화물 60%
+        carb_ratio = 0.60 # 탄수화물 60%
         protein_ratio = 0.15 # 단백질 15%
-        fat_ratio = 0.25     # 지방 25%
+        fat_ratio = 0.25 # 지방 25%
         
         targets = {
             'calories': meal_calories,
@@ -46,14 +45,13 @@ class MealRecommendation:
         
         return targets
     
-    def solve_meal_optimization(self, targets: dict, relaxed: bool = False) -> list:
-        # ILP로 최적 한 끼 식사 조합 계산, relaxed=True일 때 완화된 조건 사용
+    def solve_meal_optimization(self, targets: dict) -> list:
         n_foods = len(self.food_data)
         
         # 의사결정 변수: 각 음식의 선택 여부
         food_vars = [LpVariable(f"food_{i}", cat='Binary') for i in range(n_foods)]
         
-        prob = LpProblem("Meal_Recommendation", LpMinimize)
+        prob = LpProblem("meal_recommendation", LpMinimize)
         
         # 편차 변수
         cal_pos = LpVariable("cal_pos", lowBound=0)
@@ -66,10 +64,10 @@ class MealRecommendation:
         fat_neg = LpVariable("fat_neg", lowBound=0)
         
         # 목적 함수: 가중치 적용 편차 최소화
-        prob += (1 * (cal_pos + cal_neg) +           # 칼로리 편차 (가중치 1)
-                1.5 * (protein_pos + protein_neg) +  # 단백질 편차 (가중치 1.5)
-                0.5 * (carb_pos + carb_neg) +        # 탄수화물 편차 (가중치 0.5)
-                0.5 * (fat_pos + fat_neg))           # 지방 편차 (가중치 0.5)
+        prob += (1 * (cal_pos + cal_neg) +
+                1.5 * (protein_pos + protein_neg) +
+                0.5 * (carb_pos + carb_neg) +
+                0.5 * (fat_pos + fat_neg))
         
         # 영양소 제약 조건
         prob += (lpSum([self.food_data.iloc[i]['칼로리'] * food_vars[i] 
@@ -89,17 +87,17 @@ class MealRecommendation:
                 == fat_pos - fat_neg)
         
         # 기본 제약 조건
-        # 1. 총 음식 개수 제한 (4-8개)
+        # 총 음식 개수 제한 (4-8개)
         prob += lpSum(food_vars) >= 4
         prob += lpSum(food_vars) <= 8
         
-        # 2. 주식(밥류, 면류, 초밥/롤) 최소 1개
+        # 주식(밥류, 면류, 초밥/롤) 최소 1개
         main_dishes = [i for i, row in self.food_data.iterrows() 
                         if row['종류'] in ['밥류', '면류', '초밥/롤']]
         if main_dishes:
-            prob += lpSum([food_vars[i] for i in main_dishes]) >= 1
+            prob += lpSum([food_vars[i] for i in main_dishes]) == 1
         
-        # 3. 과일/채소, 샐러드, 디저트/간식 각각 최대 1개
+        # 과일/채소, 샐러드, 디저트/간식 각각 최대 1개
         fruits_veggies = [i for i, row in self.food_data.iterrows() 
                             if row['종류'] == '과일/채소']
         if fruits_veggies:
@@ -115,21 +113,21 @@ class MealRecommendation:
         if dessert_snacks:
             prob += lpSum([food_vars[i] for i in dessert_snacks]) <= 1
         
-        # 칼로리 범위 제한 (목표의 ±15% - 더 엄격하게)
-        min_calories = targets['calories'] * 0.85
-        max_calories = targets['calories'] * 1.15
+        # 칼로리 범위 제한 (목표 20% 내외)
+        min_calories = targets['calories'] * 0.8
+        max_calories = targets['calories'] * 1.2
         prob += lpSum([self.food_data.iloc[i]['칼로리'] * food_vars[i] 
                         for i in range(n_foods)]) >= min_calories
         prob += lpSum([self.food_data.iloc[i]['칼로리'] * food_vars[i] 
                         for i in range(n_foods)]) <= max_calories
         
-        # 나트륨 하드 제한 (목표의 120% 이하 - 엄격하게)
+        # 나트륨 범위 제한 (목표 120% 내외)
         prob += lpSum([self.food_data.iloc[i]['나트륨'] * food_vars[i] 
                         for i in range(n_foods)]) <= targets['sodium'] * 1.2
         
-        # 당분 하드 제한 (목표의 150% 이하 - 엄격하게)
+        # 당분 범위 제한 (목표 120% 내외)
         prob += lpSum([self.food_data.iloc[i]['당'] * food_vars[i] 
-                        for i in range(n_foods)]) <= targets['sugar'] * 1.5
+                        for i in range(n_foods)]) <= targets['sugar'] * 1.2
 
         prob.solve(PULP_CBC_CMD(msg=0))
         
@@ -188,7 +186,7 @@ class MealRecommendation:
 
 router = APIRouter()
 @router.get('/')
-def recommend_one_meal(height: float, weight: float, age: int, gender: str, activity: int, goal: str, prompt: str):
+def recommend_one_meal(height: float, weight: float, age: int, gender: str, activity: int, goal: str):
     """
     사용자 정보를 바탕으로 한 끼 식사 추천
     
@@ -212,7 +210,7 @@ def recommend_one_meal(height: float, weight: float, age: int, gender: str, acti
         meal_targets = meal_recommender.calculate_meal_targets(daily_calories)
         
         # 3. 기본 조건으로 시도
-        selected_foods = meal_recommender.solve_meal_optimization(meal_targets, relaxed=False)
+        selected_foods = meal_recommender.solve_meal_optimization(meal_targets)
         
         if selected_foods is None:
             return {
