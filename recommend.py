@@ -86,7 +86,6 @@ class MealRecommendation:
                        for i in range(n_foods)]) - targets['fat'] 
                 == fat_pos - fat_neg)
         
-        # 기본 제약 조건
         # 총 음식 개수 제한 (4-8개)
         prob += lpSum(food_vars) >= 4
         prob += lpSum(food_vars) <= 8
@@ -203,13 +202,8 @@ def recommend_one_meal(height: float, weight: float, age: int, gender: str, acti
     """
     meal_recommender = MealRecommendation()
     try:
-        # 1. 일일 권장 칼로리 계산
         daily_calories = meal_recommender.calculate_daily_calories(weight, height, age, gender, activity, goal)
-        
-        # 2. 한 끼 영양소 목표값 계산
         meal_targets = meal_recommender.calculate_meal_targets(daily_calories)
-        
-        # 3. 기본 조건으로 시도
         selected_foods = meal_recommender.solve_meal_optimization(meal_targets)
         
         if selected_foods is None:
@@ -217,10 +211,8 @@ def recommend_one_meal(height: float, weight: float, age: int, gender: str, acti
                 "status": "fail"
             }
         
-        # 5. 영양소 총합 계산
         totals = meal_recommender.calculate_totals(selected_foods)
         
-        # 6. 응답 형식에 맞게 반환
         return {
             "status": "success",
             "items": selected_foods,
